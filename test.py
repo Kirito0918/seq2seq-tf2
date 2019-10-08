@@ -30,6 +30,11 @@ output, states = encoder(word_embed)
 # print('output:', output)
 # print('states:', states)
 
+# TensorArray测试
+# ta = tf.TensorArray(size=0, dtype=tf.int64, dynamic_size=True)
+# ta = ta.unstack(word_id)
+# print(ta)
+
 
 
 
