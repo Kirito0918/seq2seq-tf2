@@ -15,7 +15,9 @@ class Config(object):
     # 编解码器参数
     ende_rnn_type = 'LSTM'
     ende_num_layers = 2
-    ende_output_dim = 500
+    ende_output_size = 500
     encoder_bidirectional = True
+
+    batch_size = 4
 
 

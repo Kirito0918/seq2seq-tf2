@@ -23,7 +23,7 @@ word_embed = embedding(word_id)  # [batch, seq, embedding_size]
 # print(word_embed)  # [2, 3, 5]
 
 # 编码器测试
-encoder = Encoder('LSTM', 10, 2, True)
+encoder = Encoder('LSTM', 5, 10, 2, True)
 
 output, states = encoder(word_embed)
 

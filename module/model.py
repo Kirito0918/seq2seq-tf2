@@ -3,9 +3,7 @@ import tensorflow.keras as keras
 from Embedding import Embedding
 from Encoder import Encoder
 from Decoder import Decoder
-from util import prepare_states
 
-tf.lookup.StaticVocabularyTable
 
 class Seq2seq(keras.Model):
 
@@ -16,33 +14,40 @@ class Seq2seq(keras.Model):
 
         self.embedding = Embedding(config.num_vocab, config.embedding_size, embed)
 
-        self.encoder = Encoder(config.ende_rnn_type, config.ende_output_dim, config.ende_num_layers, config.encoder_bidirectional)
+        self.encoder = Encoder(config.ende_rnn_type,
+                               config.embedding_size,
+                               config.ende_output_size,
+                               config.ende_num_layers,
+                               config.encoder_bidirectional)
 
-        self.decoder = Decoder(config.ende_rnn_type, config.ende_output_dim, config.ende_num_layers)
+        self.decoder = Decoder(config.ende_rnn_type,
+                               config.embedding_size,
+                               config.ende_output_size,
+                               config.ende_num_layers)
 
-        self.projector = keras.Sequential(keras.layers.Dense(config.num_vocab),
-                                          keras.layers.Softmax(-1))
+        self.projector = keras.layers.Dense(config.num_vocab)
 
 
     def __call__(self, input, inference=False):
 
-        if not inference:
+        if not inference:  # 训练
 
-            posts = input['post']  # [batch, len_encoder]
-            responses = input['response']  # [batch, len_decoder+1]
+            posts = input['posts']  # [batch, len_encoder]
+            responses = input['responses']  # [batch, len_decoder+1]
 
             decoder_len = tf.shape(responses)[1] - 1  # [batch, len_decoder]
 
             encoder_input = self.embedding(posts)  # [batch, len_encoder, embedding_size]
             decoder_input = self.embedding(responses)[:, :-1, :]  # [batch, len_decoder, embedding_size]
 
-            _, states = self.encoder(encoder_input)
+            # encoder_states: [num_layers] * (state): tensor(batch, dim*dircetions)
+            outputs, encoder_states = self.encoder(encoder_input)
 
-            decoder_states = prepare_states(self.config.ende_rnn_type, self.config.encoder_bidirectional, states)
+            decoder_states = encoder_states
 
             ta = tf.TensorArray(size=0, dtype=tf.int64, dynamic_size=True)
 
-            decoder_input = ta.unstack(tf.transpose(decoder_input, [1, 0, 2]))  # [batch, embedding_size]
+            decoder_input = ta.unstack(tf.transpose(decoder_input, [1, 0, 2]))  # decoder_len * [batch, embedding_size]
 
             outputs = []
 
