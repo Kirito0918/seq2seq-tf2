@@ -7,12 +7,13 @@ from Decoder import Decoder
 
 class Seq2seq(keras.Model):
 
-    def __init__(self, config, embed=None):
+    def __init__(self, config, embeds=None):
         super(Seq2seq, self).__init__()
 
         self.config = config
+        self.global_step = tf.Variable([0], dtype=tf.int32, trainable=False)
 
-        self.embedding = Embedding(config.num_vocab, config.embedding_size, embed)
+        self.embedding = Embedding(config.num_vocab, config.embedding_size, weights=embeds)
 
         self.encoder = Encoder(config.ende_rnn_type,
                                config.embedding_size,
@@ -27,8 +28,10 @@ class Seq2seq(keras.Model):
 
         self.projector = keras.layers.Dense(config.num_vocab)
 
+        self.softmax = keras.layers.Softmax(-1)
 
-    def __call__(self, input, inference=False):
+
+    def __call__(self, input, inference=False, max_len=60):
 
         if not inference:  # 训练
 
@@ -49,7 +52,7 @@ class Seq2seq(keras.Model):
 
             outputs = []
 
-            for timestep in range(decoder_len.numpy()):
+            for timestep in range(decoder_len):
 
                 if timestep == 0:
 
@@ -58,49 +61,55 @@ class Seq2seq(keras.Model):
                 # output: [batch, 1, dim]
                 output, states = self.decoder(tf.expand_dims(decoder_input.read(timestep), 1), states)
 
-                outputs.append(tf.transpose(output, [1, 0, 2]))  # [1, batch, dim]
+                outputs.append(output)
 
-            outputs = tf.concat(outputs, 0)  # [len_decoder, batch, dim]
-            outputs = tf.transpose(outputs, [1, 0, 2])  # [batch, len_decoder, dim]
+            outputs = tf.concat(outputs, 1)  # [batch, len_decoder, dim]
 
             outputs_prob = self.projector(outputs)  # [batch, len_decoder, num_vocab]
+            outputs_prob = self.softmax(outputs_prob)
 
             return outputs_prob
 
+        else:  # 测试
 
+            posts = input['posts']  # [batch, len_encoder]
 
+            batch_size = tf.shape(posts)[0]
 
+            encoder_input = self.embedding(posts)  # [batch, len_encoder, embedding_size]
 
+            # encoder_states: [num_layers] * tensor(batch, output_size)
+            _, encoder_states = self.encoder(encoder_input)
 
+            outputs = []
+            done = tf.cast(tf.zeros([batch_size]), dtype=tf.bool)
+            first_input = self.embedding(tf.convert_to_tensor([1] * self.config.start_id, dtype=tf.int32))  # [batch, embedding_size]
 
+            for timestep in range(max_len):
 
+                if timestep == 0:
+                    states = encoder_states
+                    decoder_input = first_input  # [batch, embedding_size]
 
+                # output: [batch, 1, dim]
+                output, states = self.decoder(tf.expand_dims(decoder_input, 1), states)
 
+                outputs.append(output)  # [batch, 1, dim]
 
+                output_prob = self.projector(output)  # [batch, 1, num_vocab]
+                output_prob = self.softmax(output_prob)  # [batch, 1, num_vocab]
+                next_input_id = tf.reshape(tf.argmax(output_prob, 2), [-1])  # [batch]
 
+                _done = next_input_id == self.config.end_id
+                done = done | _done
+                if tf.reduce_sum(tf.cast(done, dtype=tf.int32)) == batch_size:
+                    break
+                else:
+                    decoder_input = self.embedding(next_input_id)  # [batch, embedding_size]
 
+            outputs = tf.concat(outputs, 1)  # [batch, len_decoder, dim]
 
+            outputs_prob = self.projector(outputs)  # [batch, len_decoder, num_vocab]
+            outputs_prob = self.softmax(outputs_prob)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            return outputs_prob

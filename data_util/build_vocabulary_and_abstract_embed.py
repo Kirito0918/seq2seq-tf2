@@ -20,7 +20,6 @@ parser.add_argument('--end_token', dest='end_token', default='</s>', type=str, h
 parser.add_argument('--unk_token', dest='unk_token', default='<unk>', type=str, help='unk的记法')
 args = parser.parse_args()
 
-
 def build_vocabulary(trainp, vp, testp, vn=30000):
     """
         构建词汇表

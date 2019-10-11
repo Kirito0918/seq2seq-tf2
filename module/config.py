@@ -18,6 +18,7 @@ class Config(object):
     ende_output_size = 500
     encoder_bidirectional = True
 
-    batch_size = 4
-
+    batch_size = 8
+    lr = 0.0001
+    gradients_clip_norm = 5
 

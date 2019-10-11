@@ -37,17 +37,22 @@ tf.random.set_seed(0)
 # ta = ta.unstack(word_id)
 # print(ta)
 
-prob = tf.convert_to_tensor([[3, 7], [6, 3]], dtype=tf.float32)
-print(prob)
-labels = tf.convert_to_tensor([0, 1], dtype=tf.int64)
-print(labels)
-softmax_prob = tf.keras.activations.softmax(prob, -1)
-print(softmax_prob)
-log_softmax_prob = tf.math.log(softmax_prob)
-print(log_softmax_prob)
+done = tf.cast(tf.zeros([5]), tf.bool)
+print(done)
 
-cross_entropy = tf.keras.losses.sparse_categorical_crossentropy(y_pred=prob, y_true=labels)
-print(cross_entropy)
+_done = tf.convert_to_tensor([4, 3, 9, 10, 3], dtype=tf.int32) == 3
+print(_done)
+
+done = done | _done
+print(done)
+
+for i in range(tf.reduce_sum(tf.cast(done, dtype=tf.int32))):
+    print(1)
+
+print(tf.ones([10]))
+
+
+
 
 
 

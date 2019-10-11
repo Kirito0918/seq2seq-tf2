@@ -5,6 +5,8 @@ from module.utils.sentence_processor import SentenceProcessor
 from module.utils.data_processor import DataProcessor
 import json
 import argparse
+import os
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--trainset_path', dest='trainset_path', default='data/raw/trainset_cut300000.txt', type=str, help='训练集位置')
@@ -19,7 +21,7 @@ parser.add_argument('--inference', dest='inference', default=False, type=bool, h
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
 parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
 parser.add_argument('--gpu', dest='gpu', default=True, type=bool, help='是否使用gpu')  #
-parser.add_argument('--max_epoch', dest='max_epoch', default=20, type=int, help='最大训练epoch')
+parser.add_argument('--max_epoch', dest='max_epoch', default=60, type=int, help='最大训练epoch')
 
 args = parser.parse_args()  # 程序运行参数
 
@@ -61,35 +63,114 @@ def main():
     # 通过词汇表构建一个word2index和index2word的工具
     sentence_processor = SentenceProcessor(vocab, config.pad_id, config.start_id, config.end_id, config.unk_id)
 
-    # 创建模型
-    model = Seq2seq(config)
-    epoch = 0  # 训练集迭代次数
-    global_step = 0  # 参数更新次数
+    model = Seq2seq(config, embeds)
+    # 载入模型
+    if os.path.isfile(args.model_path):
+        model.load_weights(args.model_path)
+        print('载入模型完成')
+    elif args.inference:
+        print('请载入一个模型进行测试')
+        return
+
+    # 创建优化器
+    optimizer = tf.optimizers.Adam(config.lr)
 
     # 训练
     if not args.inference:
 
+        log_dir = os.path.join(args.log_path, 'run%d' % int(time.time()))
+        if not os.path.exists(args.log_path):
+            os.makedirs(args.log_path)
+
         dp_train = DataProcessor(trainset, config.batch_size, sentence_processor)
+        dp_valid = DataProcessor(validset, config.batch_size, sentence_processor)
 
-        for data in dp_train.get_batch_data():
+        for epoch in range(args.max_epoch):
+            for data in dp_train.get_batch_data():
 
-            feed_input = {'posts': tf.convert_to_tensor(data['posts'], dtype=tf.int64),
-                          'responses': tf.convert_to_tensor(data['responses'], dtype=tf.int64)}
+                train(model, data, optimizer)
+                model.global_step += 1
 
-            labels = tf.convert_to_tensor(data['responses'], dtype=tf.int64)
+                if model.global_step % args.log_per_step == 0:
+                    log_file = os.path.join(log_dir, 'model.ckpt')
+                    model.save_weights(log_file)
 
-            outputs_prob = model(feed_input)
-
-
-
+            log_file = os.path.join(log_dir, 'model.ckpt')
+            model.save_weights(log_file)
 
     else:  # 测试
 
         pass
 
-def comput_losses(logits, labels):
-    decoder_len = tf.shape(logits)
+def comput_losses(logits,  # [batch, len_decoder, num_vocab]
+                  labels,  # [batch, len_decoder]
+                  masks):  # [batch, len_decoder]
 
+    len_decoder = tf.shape(logits)[1]
+    len_masks = 1.0 * tf.reduce_sum(masks, 1)  # [batch]
+    len_masks = tf.clip_by_value(len_masks, 1e-12, tf.cast(len_decoder, dtype=tf.float32))  # 防止长度为0
+
+    logits = tf.reshape(logits, [-1, tf.shape(logits)[2]])  # [batch*len_decoder, num_vocab]
+    logits = tf.clip_by_value(logits, 1e-12, 1.0)  # 防止log0
+    labels = tf.reshape(labels, [-1])  # [batch*len_decoder]
+    masks = tf.reshape(masks, [-1])  # [batch*len_decoder]
+
+    losses = tf.keras.losses.sparse_categorical_crossentropy(y_pred=logits, y_true=labels)  # [batch*len_decoder]
+    losses = losses * masks  # [batch*len_decoder]
+
+    losses = tf.reshape(losses, [-1, len_decoder])  # [batch, len_decoder]
+    losses = tf.reduce_sum(losses, 1)  # [batch]每个样本的损失
+
+    ppls = losses / len_masks  # [batch]
+
+    return losses, ppls
+
+def train(model, data, optimizer):
+
+    # 输入
+    feed_input = {'posts': tf.convert_to_tensor(data['posts'], dtype=tf.int32),
+                  'responses': tf.convert_to_tensor(data['responses'], dtype=tf.int32)}
+
+    # 标签
+    labels = tf.convert_to_tensor(data['responses'], dtype=tf.int32)[:, 1:]  # [batch, len_decoder] 去掉start_id
+
+    # mask
+    len_responses = tf.convert_to_tensor(data['len_responses'], dtype=tf.int32)
+    len_labels = len_responses - 1
+    id_masks = len_labels - 1
+    masks = tf.cumsum(tf.one_hot(id_masks, tf.reduce_max(id_masks) + 1), 1, reverse=True)
+
+    with tf.GradientTape() as tape:
+        outputs_prob = model(feed_input)
+        losses, ppls = comput_losses(outputs_prob, labels, masks)
+
+    trainable_variables = model.trainable_variables
+    gradients = tape.gradient(losses, trainable_variables)
+    clipped_gradients, _ = tf.clip_by_global_norm(gradients, config.gradients_clip_norm)
+    optimizer.apply_gradients(zip(clipped_gradients, trainable_variables))
+
+    print(tf.reduce_mean(losses).numpy())
+
+
+def valid(model, data):
+
+    # 输入
+    feed_input = {'posts': tf.convert_to_tensor(data['posts'], dtype=tf.int32),
+                  'responses': tf.convert_to_tensor(data['responses'], dtype=tf.int32)}
+
+    # 标签
+    labels = tf.convert_to_tensor(data['responses'], dtype=tf.int32)[:, 1:]  # [batch, len_decoder] 去掉start_id
+
+    # mask
+    len_responses = tf.convert_to_tensor(data['len_responses'], dtype=tf.int32)
+    len_labels = len_responses - 1
+    id_masks = len_labels - 1
+    masks = tf.cumsum(tf.one_hot(id_masks, tf.reduce_max(id_masks) + 1), 1, reverse=True)
+
+    outputs_prob = model(feed_input)
+    _, ppls = comput_losses(outputs_prob, labels, masks)
+
+    return ppls.numpy().tolist()  # [batch]
 
 
 if __name__ == '__main__':
