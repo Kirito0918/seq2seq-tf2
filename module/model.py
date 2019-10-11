@@ -40,10 +40,8 @@ class Seq2seq(keras.Model):
             encoder_input = self.embedding(posts)  # [batch, len_encoder, embedding_size]
             decoder_input = self.embedding(responses)[:, :-1, :]  # [batch, len_decoder, embedding_size]
 
-            # encoder_states: [num_layers] * (state): tensor(batch, dim*dircetions)
-            outputs, encoder_states = self.encoder(encoder_input)
-
-            decoder_states = encoder_states
+            # encoder_states: [num_layers] * tensor(batch, output_size)
+            _, encoder_states = self.encoder(encoder_input)
 
             ta = tf.TensorArray(size=0, dtype=tf.int64, dynamic_size=True)
 
@@ -55,7 +53,7 @@ class Seq2seq(keras.Model):
 
                 if timestep == 0:
 
-                    states = decoder_states
+                    states = encoder_states
 
                 # output: [batch, 1, dim]
                 output, states = self.decoder(tf.expand_dims(decoder_input.read(timestep), 1), states)

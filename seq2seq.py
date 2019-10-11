@@ -1,6 +1,5 @@
 from module.config import Config
 from module.model import Seq2seq
-import tensorflow.keras as keras
 import tensorflow as tf
 from module.utils.sentence_processor import SentenceProcessor
 from module.utils.data_processor import DataProcessor
@@ -77,12 +76,19 @@ def main():
             feed_input = {'posts': tf.convert_to_tensor(data['posts'], dtype=tf.int64),
                           'responses': tf.convert_to_tensor(data['responses'], dtype=tf.int64)}
 
+            labels = tf.convert_to_tensor(data['responses'], dtype=tf.int64)
+
             outputs_prob = model(feed_input)
+
+
 
 
     else:  # 测试
 
         pass
+
+def comput_losses(logits, labels):
+    decoder_len = tf.shape(logits)
 
 
 

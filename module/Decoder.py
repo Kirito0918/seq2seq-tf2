@@ -9,23 +9,19 @@ class Decoder(keras.layers.Layer):
         super(Decoder, self).__init__()
         assert rnn_type in ['GRU', 'LSTM']
 
-        self.rnns = [getattr(keras.layers, rnn_type)(output_size, input_shape=(None, None, input_size),
-                                                     return_sequences=True, return_state=True)
-                     for _ in range(num_layers)]
+        if rnn_type == 'GRU':
+            rnnCell = [getattr(keras.layers, 'GRUCell')(output_size) for _ in range(num_layers)]
+        else:
+            rnnCell = [getattr(keras.layers, 'LSTMCell')(output_size) for _ in range(num_layers)]
+
+        self.rnn = keras.layers.RNN(rnnCell, input_shape=(None, None, input_size),
+                                    return_sequences=True, return_state=True)
         self.rnn_type = rnn_type
         self.num_layers = num_layers
 
     def __call__(self, input, states):  # input: [batch, 1, input_size]
 
-        new_states = []
-
-        for idx, rnn in enumerate(self.rnns):
-
-            outputs = rnn(input, states[idx])
-
-            input = outputs[0]
-
-            new_states.append(tuple(outputs[1:]))
+        outputs = self.rnn(input, states)
 
         # output: [batch, 1, output_size]
-        return outputs[0], new_states
+        return outputs[0], outputs[1:]

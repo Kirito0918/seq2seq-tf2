@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 from module.Embedding import Embedding
 from module.Encoder import Encoder
+
+tf.random.set_seed(0)
 # from tensorflow.python.ops import control_flow_util
 # control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
@@ -14,19 +16,19 @@ from module.Encoder import Encoder
 # bidirectional = True
 
 # 嵌入层测试
-weights = [np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6], [3, 4, 5, 6, 7]], dtype=np.float64)]
-embedding = Embedding(3, 5, weights)  # (num_vocab, embedding_size)
-
-word_id = tf.convert_to_tensor([[1, 2, 0], [1, 0, 0]], dtype=tf.int64)
-word_embed = embedding(word_id)  # [batch, seq, embedding_size]
+# weights = [np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6], [3, 4, 5, 6, 7]], dtype=np.float64)]
+# embedding = Embedding(3, 5, weights)  # (num_vocab, embedding_size)
+#
+# word_id = tf.convert_to_tensor([[1, 2, 0], [1, 0, 0]], dtype=tf.int64)
+# word_embed = embedding(word_id)  # [batch, seq, embedding_size]
 
 # print(word_embed)  # [2, 3, 5]
 
 # 编码器测试
-encoder = Encoder('LSTM', 5, 10, 2, True)
-
-output, states = encoder(word_embed)
-
+# encoder = Encoder('LSTM', 5, 10, 1, True)
+#
+# output, states = encoder(word_embed)
+#
 # print('output:', output)
 # print('states:', states)
 
@@ -34,6 +36,19 @@ output, states = encoder(word_embed)
 # ta = tf.TensorArray(size=0, dtype=tf.int64, dynamic_size=True)
 # ta = ta.unstack(word_id)
 # print(ta)
+
+prob = tf.convert_to_tensor([[3, 7], [6, 3]], dtype=tf.float32)
+print(prob)
+labels = tf.convert_to_tensor([0, 1], dtype=tf.int64)
+print(labels)
+softmax_prob = tf.keras.activations.softmax(prob, -1)
+print(softmax_prob)
+log_softmax_prob = tf.math.log(softmax_prob)
+print(log_softmax_prob)
+
+cross_entropy = tf.keras.losses.sparse_categorical_crossentropy(y_pred=prob, y_true=labels)
+print(cross_entropy)
+
 
 
 

@@ -42,32 +42,29 @@ class Encoder(keras.layers.Layer):
 
         output = outputs[0]
         states = outputs[1:]
+        states_forward = states[: self.num_layers]
+        states_backward = states[self.num_layers:]
 
-        print(outputs)
-        print(len(outputs))
-        print(len(states))
+        if self.bidirectional:
 
-        # if self.bidirectional:
-        #     for idx, layer_state in enumerate(states):
-        #         print(layer_state)
-        #         if self.rnn_type == 'LSTM':
-        #             state_hf, state_cf, state_hb, state_cb = layer_state
-        #             state_h = tf.concat([state_hf, state_hb], 1)
-        #             state_c = tf.concat([state_cf, state_cb], 1)
-        #             states[idx] = [state_h, state_c]
-        #
-        #         else:  # 'GRU'
-        #             state_hf, state_cf = layer_state
-        #             state_h = tf.concat([state_hf, state_hb], 1)
-        #             states[idx] = [state_h]
+            states = []
 
-        # output: [batch, seq, dim*dircetions]
-        # states: [num_layers] * (state): tensor(batch, dim*dircetions)
+            if self.rnn_type == 'LSTM':
+                for idx in range(self.num_layers):
+                    state_hf, state_cf = states_forward[idx]
+                    state_hb, state_cb = states_backward[idx]
+                    state_h = tf.concat([state_hf, state_hb], 1)
+                    state_c = tf.concat([state_cf, state_cb], 1)
+                    state = [state_h, state_c]
+                    states.append(state)
+
+            else:  # 'GRU'
+                for idx in range(self.num_layers):
+                    state_hf = states_forward[idx]
+                    state_hb = states_backward[idx]
+                    state = tf.concat([state_hf, state_hb], 1)
+                    states.append(state)
+
+        # output: [batch_size, encoder_len, output_size]
+        # states: [num_layers] * tensor(batch, output_size)
         return output, states
-
-
-
-
-
-
-
