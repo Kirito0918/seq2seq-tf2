@@ -1,1 +1,1 @@
-tensorflow2.0实现一个seq2seq网络
+tensorflow2.0.0实现一个seq2seq网络

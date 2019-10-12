@@ -15,18 +15,18 @@ parser.add_argument('--validset_path', dest='validset_path', default='data/raw/v
 parser.add_argument('--testset_path', dest='testset_path', default='data/raw/testset.txt', type=str, help='测试集位置')
 parser.add_argument('--embed_path', dest='embed_path', default='data/embed.txt', type=str, help='词向量位置')
 parser.add_argument('--result_path', dest='result_path', default='result', type=str, help='测试结果位置')
-parser.add_argument('--print_per_step', dest='print_per_step', default=100, type=int, help='每更新多少次参数summary学习情况')
-parser.add_argument('--log_per_step', dest='log_per_step', default=3, type=int, help='每更新多少次参数保存模型')
+parser.add_argument('--print_per_step', dest='print_per_step', default=1, type=int, help='每更新多少次参数summary学习情况')
+parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=int, help='每更新多少次参数保存模型')
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
 parser.add_argument('--inference', dest='inference', default=False, type=bool, help='是否测试')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
-parser.add_argument('--model_path', dest='model_path', default='log/run1570849591/model           9.ckpt.index', type=str, help='载入模型位置')  #
-parser.add_argument('--gpu', dest='gpu', default=True, type=bool, help='是否使用gpu')  #
+parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
 parser.add_argument('--max_epoch', dest='max_epoch', default=60, type=int, help='最大训练epoch')
 
 args = parser.parse_args()  # 程序运行参数
 
 config = Config()  # 模型配置
+
 
 def main():
 
@@ -89,12 +89,21 @@ def main():
     if not args.inference:
 
         dp_train = DataProcessor(trainset, config.batch_size, sentence_processor)
-        dp_valid = DataProcessor(validset, config.batch_size, sentence_processor)
+        dp_valid = DataProcessor(validset, config.batch_size, sentence_processor, shuffle=False)
+
+        summary_writer = tf.summary.create_file_writer(log_dir)
 
         for epoch in range(args.max_epoch):
             for data in dp_train.get_batch_data():
 
-                train(model, data, optimizer)
+                loss, ppl = train(model, data, optimizer)
+
+                if global_step % args.print_per_step == 0:
+                    print('global_step: %d, 训练集上的损失: %g, 训练集上的困惑度: %g' % (global_step, loss, ppl))
+                    with summary_writer.as_default():
+                        tf.summary.scalar('train_loss', loss, global_step)
+                        tf.summary.scalar('train_ppl', ppl, global_step)
+                        summary_writer.flush()
 
                 global_step += 1
 
@@ -107,6 +116,9 @@ def main():
                         ppls.extend(ppl)
                     avg_ppl = np.exp(np.array(ppls).mean())
                     print('验证集上的困惑度: %g' % avg_ppl)
+                    with summary_writer.as_default():
+                        tf.summary.scalar('valid_ppl', avg_ppl, global_step)
+                        summary_writer.flush()
 
             log_file = os.path.join(log_dir, 'model%012d.ckpt' % global_step)
             model.save_weights(log_file)
@@ -116,10 +128,44 @@ def main():
                 ppls.extend(ppl)
             avg_ppl = np.exp(np.array(ppls).mean())
             print('验证集上的困惑度: %g' % avg_ppl)
+            with summary_writer.as_default():
+                tf.summary.scalar('valid_ppl', avg_ppl, global_step)
+                summary_writer.flush()
 
     else:  # 测试
 
-        pass
+        dp_test = DataProcessor(testset, config.batch_size, sentence_processor, shuffle=False)
+
+        ppls = []
+        for test_data in dp_test.get_batch_data():
+            ppl = valid(model, test_data)
+            ppls.extend(ppl)
+        avg_ppl = np.exp(np.array(ppls).mean())
+        print('测试集上的困惑度: %g' % avg_ppl)
+
+        result_dir = args.result_path
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+        result_file = os.path.join(result_dir, model_file + '.txt')
+        fw = open(result_file, 'w', encoding='utf8')
+
+        for test_data in dp_test.get_batch_data():
+            str_posts = test_data['str_posts']
+            str_responses = test_data['str_responses']
+
+            feed_input = {'posts': tf.convert_to_tensor(test_data['posts'], dtype=tf.int32)}
+            outputs_prob = model(feed_input, inference=True, max_len=args.max_len)  # [batch, len_decoder, num_vocab]
+            outputs_id = tf.argmax(outputs_prob, 2).numpy().tolist()  # [batch, len_decoder]
+
+            for idx, result in enumerate(outputs_id):
+                data = {}
+                data['post'] = str_posts[idx]
+                data['response'] = str_responses[idx]
+                data['result'] = sentence_processor(result)
+                fw.write(json.dumps(data) + '\n')
+
+        fw.close()
+
 
 def comput_losses(logits,  # [batch, len_decoder, num_vocab]
                   labels,  # [batch, len_decoder]
@@ -143,6 +189,7 @@ def comput_losses(logits,  # [batch, len_decoder, num_vocab]
     ppls = losses / len_masks  # [batch]
 
     return losses, ppls
+
 
 def train(model, data, optimizer):
 
@@ -168,7 +215,7 @@ def train(model, data, optimizer):
     clipped_gradients, _ = tf.clip_by_global_norm(gradients, config.gradients_clip_norm)
     optimizer.apply_gradients(zip(clipped_gradients, trainable_variables))
 
-    print( % (tf.reduce_mean(losses).numpy(), tf.exp(tf.reduce_mean(ppls)).numpy()))
+    return tf.reduce_mean(losses).numpy(), tf.exp(tf.reduce_mean(ppls)).numpy()
 
 
 def valid(model, data):

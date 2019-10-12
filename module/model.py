@@ -25,7 +25,7 @@ class Seq2seq(keras.Model):
                                config.ende_output_size,
                                config.ende_num_layers)
 
-        self.projector = keras.layers.Dense(config.num_vocab)
+        self.projector = keras.layers.Dense(config.num_vocab, input_shape=(None, None, config.ende_output_size))
 
         self.softmax = keras.layers.Softmax(-1)
 
