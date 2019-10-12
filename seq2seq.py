@@ -7,6 +7,7 @@ import json
 import argparse
 import os
 import time
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--trainset_path', dest='trainset_path', default='data/raw/trainset_cut300000.txt', type=str, help='训练集位置')
@@ -15,11 +16,11 @@ parser.add_argument('--testset_path', dest='testset_path', default='data/raw/tes
 parser.add_argument('--embed_path', dest='embed_path', default='data/embed.txt', type=str, help='词向量位置')
 parser.add_argument('--result_path', dest='result_path', default='result', type=str, help='测试结果位置')
 parser.add_argument('--print_per_step', dest='print_per_step', default=100, type=int, help='每更新多少次参数summary学习情况')
-parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=int, help='每更新多少次参数保存模型')
+parser.add_argument('--log_per_step', dest='log_per_step', default=3, type=int, help='每更新多少次参数保存模型')
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
 parser.add_argument('--inference', dest='inference', default=False, type=bool, help='是否测试')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
-parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
+parser.add_argument('--model_path', dest='model_path', default='log/run1570849591/model           9.ckpt.index', type=str, help='载入模型位置')  #
 parser.add_argument('--gpu', dest='gpu', default=True, type=bool, help='是否使用gpu')  #
 parser.add_argument('--max_epoch', dest='max_epoch', default=60, type=int, help='最大训练epoch')
 
@@ -63,24 +64,29 @@ def main():
     # 通过词汇表构建一个word2index和index2word的工具
     sentence_processor = SentenceProcessor(vocab, config.pad_id, config.start_id, config.end_id, config.unk_id)
 
-    model = Seq2seq(config, embeds)
+    model = Seq2seq(config, np.array(embeds))
+    global_step = 0
+
     # 载入模型
     if os.path.isfile(args.model_path):
         model.load_weights(args.model_path)
         print('载入模型完成')
+        log_dir, model_file = os.path.split(args.model_path)
+        global_step = int(model_file[5: model_file.find('.')])
     elif args.inference:
         print('请载入一个模型进行测试')
         return
+    else:
+        print('初始化模型完成')
+        log_dir = os.path.join(args.log_path, 'run%d' % int(time.time()))
+        if not os.path.exists(args.log_path):
+            os.makedirs(args.log_path)
 
     # 创建优化器
     optimizer = tf.optimizers.Adam(config.lr)
 
     # 训练
     if not args.inference:
-
-        log_dir = os.path.join(args.log_path, 'run%d' % int(time.time()))
-        if not os.path.exists(args.log_path):
-            os.makedirs(args.log_path)
 
         dp_train = DataProcessor(trainset, config.batch_size, sentence_processor)
         dp_valid = DataProcessor(validset, config.batch_size, sentence_processor)
@@ -89,14 +95,27 @@ def main():
             for data in dp_train.get_batch_data():
 
                 train(model, data, optimizer)
-                model.global_step += 1
 
-                if model.global_step % args.log_per_step == 0:
-                    log_file = os.path.join(log_dir, 'model.ckpt')
+                global_step += 1
+
+                if global_step % args.log_per_step == 0:
+                    log_file = os.path.join(log_dir, 'model%012d.ckpt' % global_step)
                     model.save_weights(log_file)
+                    ppls = []
+                    for valid_data in dp_valid.get_batch_data():
+                        ppl = valid(model, valid_data)
+                        ppls.extend(ppl)
+                    avg_ppl = np.exp(np.array(ppls).mean())
+                    print('验证集上的困惑度: %g' % avg_ppl)
 
-            log_file = os.path.join(log_dir, 'model.ckpt')
+            log_file = os.path.join(log_dir, 'model%012d.ckpt' % global_step)
             model.save_weights(log_file)
+            ppls = []
+            for valid_data in dp_valid.get_batch_data():
+                ppl = valid(model, valid_data)
+                ppls.extend(ppl)
+            avg_ppl = np.exp(np.array(ppls).mean())
+            print('验证集上的困惑度: %g' % avg_ppl)
 
     else:  # 测试
 
@@ -149,7 +168,7 @@ def train(model, data, optimizer):
     clipped_gradients, _ = tf.clip_by_global_norm(gradients, config.gradients_clip_norm)
     optimizer.apply_gradients(zip(clipped_gradients, trainable_variables))
 
-    print(tf.reduce_mean(losses).numpy())
+    print( % (tf.reduce_mean(losses).numpy(), tf.exp(tf.reduce_mean(ppls)).numpy()))
 
 
 def valid(model, data):

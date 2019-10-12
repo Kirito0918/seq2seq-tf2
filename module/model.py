@@ -11,7 +11,6 @@ class Seq2seq(keras.Model):
         super(Seq2seq, self).__init__()
 
         self.config = config
-        self.global_step = tf.Variable([0], dtype=tf.int32, trainable=False)
 
         self.embedding = Embedding(config.num_vocab, config.embedding_size, weights=embeds)
 

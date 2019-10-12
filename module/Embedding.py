@@ -8,7 +8,9 @@ class Embedding(keras.layers.Layer):
         super(Embedding, self).__init__()
 
         if weights is not None:
-            self.embedding = keras.layers.Embedding(input_size, output_size, weights=weights, mask_zero=True)
+            self.embedding = keras.layers.Embedding(input_size, output_size,
+                                                    embeddings_initializer=keras.initializers.constant(weights),
+                                                    mask_zero=True)
         else:
             self.embedding = keras.layers.Embedding(input_size, output_size, mask_zero=True)
 
