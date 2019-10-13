@@ -1,5 +1,4 @@
 
-
 class Config(object):
 
     # 其他参数
@@ -15,10 +14,9 @@ class Config(object):
     # 编解码器参数
     ende_rnn_type = 'LSTM'
     ende_num_layers = 2
-    ende_output_size = 500
+    ende_output_size = 300
     encoder_bidirectional = True
 
-    batch_size = 8
+    batch_size = 32
     lr = 0.0001
     gradients_clip_norm = 5
-

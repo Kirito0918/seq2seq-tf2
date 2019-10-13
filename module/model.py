@@ -81,8 +81,9 @@ class Seq2seq(keras.Model):
             _, encoder_states = self.encoder(encoder_input)
 
             outputs = []
-            done = tf.cast(tf.zeros([batch_size]), dtype=tf.bool)
-            first_input = self.embedding(tf.convert_to_tensor([1] * self.config.start_id, dtype=tf.int32))  # [batch, embedding_size]
+            done = tf.cast(tf.zeros([batch_size], dtype=tf.int32), dtype=tf.bool)
+            first_input = self.embedding(  # [batch, 1, embedding_size]
+                tf.expand_dims(tf.ones([batch_size], dtype=tf.int32) * self.config.start_id, 1))
 
             for timestep in range(max_len):
 
@@ -91,7 +92,7 @@ class Seq2seq(keras.Model):
                     decoder_input = first_input  # [batch, embedding_size]
 
                 # output: [batch, 1, dim]
-                output, states = self.decoder(tf.expand_dims(decoder_input, 1), states)
+                output, states = self.decoder(decoder_input, states)
 
                 outputs.append(output)  # [batch, 1, dim]
 
@@ -104,7 +105,7 @@ class Seq2seq(keras.Model):
                 if tf.reduce_sum(tf.cast(done, dtype=tf.int32)) == batch_size:
                     break
                 else:
-                    decoder_input = self.embedding(next_input_id)  # [batch, embedding_size]
+                    decoder_input = self.embedding(tf.expand_dims(next_input_id, 1))  # [batch, 1, embedding_size]
 
             outputs = tf.concat(outputs, 1)  # [batch, len_decoder, dim]
 
