@@ -96,10 +96,13 @@ def main():
         for epoch in range(args.max_epoch):
             for data in dp_train.get_batch_data():
 
+                start_time = time.time()
                 loss, ppl = train(model, data, optimizer)
+                use_time = time.time() - start_time
 
                 if global_step % args.print_per_step == 0:
-                    print('global_step: %d, loss: %g, ppl: %g' % (global_step, loss, ppl))
+                    print('global_step: %d, loss: %g, ppl: %g, time: %gs'
+                          % (global_step, loss, ppl, use_time))
                     with summary_writer.as_default():
                         tf.summary.scalar('train_loss', loss, global_step)
                         tf.summary.scalar('train_ppl', ppl, global_step)
