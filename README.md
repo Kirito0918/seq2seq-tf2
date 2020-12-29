@@ -1,1 +1,1 @@
-tensorflow2.0.0实现一个seq2seq网络
+tensorflow2实现一个seq2seq网络, 最近将重新捡起tf2, 然后更新一下模型的写法2020-12-29, 改进模型的训练速度
